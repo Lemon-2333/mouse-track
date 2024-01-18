@@ -1,8 +1,8 @@
-import os
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw,ImageTk
 import tkinter as tk
 import datetime
+import time,os
 from pynput import mouse
 
 Position = tuple[int, int]
@@ -32,6 +32,33 @@ class Checkbutton(tk.Checkbutton):
         super(Checkbutton, self).__init__(*args, **kwargs)
         self.pack(pady=2)
 
+class ImageLable(tk.Label):
+    def __init__(self,get_image:type(lambda : "a"), *args, **kwargs) -> None:
+        super(ImageLable, self).__init__(*args, **kwargs)
+        self.pack(pady=11)
+        self.state = 1
+        self.get_image=get_image
+        print(self.get_image())
+
+    
+    def switch(self):
+        self.state = not self.state
+
+    def update_lable(self):
+        """刷新隐藏状态"""
+        if self.state:
+            self.pack(pady=11)
+        else:
+            self.pack_forget()
+
+    def update_image(self):
+        """更新图片显示"""
+        global image 
+        image=self.get_image()
+        self.config(image=image)
+        self.after(10,self.update_image)
+
+
 
 class ImageCache(object):
     def __init__(self, size: Size):
@@ -49,6 +76,10 @@ class ImageCache(object):
             self._size,
             (0, 0, 0, 255),
         )
+
+    def get_image(self):
+        """返回当前缓存的图像"""
+        return ImageTk.PhotoImage(self.cache)
 
     def save(self, dirname="out", create_dir=True, clean=True):
         """
@@ -121,21 +152,28 @@ class ImageCache(object):
         # Alpha composite two images together and replace first with result.
         self._cache.paste(Image.alpha_composite(self._cache, transp))
 
-
 class MoveTracker(tk.BooleanVar):
-    def __init__(self, cache: ImageCache):
-        """A tracker that maintains a state of whether it should track or not"""
+    def __init__(self, cache: ImageCache, interval: float=0.0):
+        """A tracker that maintains a state of whether it should track or not
+        
+        Args:
+            cache (ImageCache): An ImageCache object for caching images.
+            interval (float): The time interval (in seconds) for capturing mouse movements.
+        """
         super(MoveTracker, self).__init__(value=True)
         self.position = None
         self.cache = cache
+        self.interval = interval
+        self.last_capture_time = time.time()
 
     def track(self, x: int, y: int):
-        if self.get():
-            # print(f"move to ({x}, {y})")
+        if self.get() and time.time() - self.last_capture_time >= self.interval:
             position = (x, y)
             if self.position:
+                # print(f"move to ({x}, {y})")
                 self.cache.line(start=self.position, end=position)
             self.position = position
+            self.last_capture_time = time.time()
 
 
 class ClickTracker(tk.BooleanVar):
@@ -184,14 +222,14 @@ class App(tk.Tk):
         self.geometry("400x400")
 
         self.start_button = Button(self, text="开始记录", command=self.start_tracking)
-
         self.stop_button = Button(self, text="停止记录", command=self.stop_tracking)
         self.stop_button.switch()
 
         self.cache = ImageCache(
             size=(self.winfo_screenwidth(), self.winfo_screenheight())
         )
-
+        #self.canvas = tk.Canvas(self,width=400, height=400)  # Label组件用于显示图片
+        self.image_lable = ImageLable(get_image=self.cache.get_image,master=self)
         self.trackers = Trackers(
             click_trackers={
                 mouse.Button.left: ClickTracker(cache=self.cache, color=Colors.Left),
@@ -217,6 +255,7 @@ class App(tk.Tk):
         self.stop_button.switch()
         self.trackers.reset()
         self.trackers.start()
+        self.image_lable.update_image()  # 开始记录时更新图片显示
 
     def stop_tracking(self):
         """点击结束记录"""
@@ -224,6 +263,8 @@ class App(tk.Tk):
         self.start_button.switch()
         self.cache.save()
         self.trackers.stop()
+
+    
 
 
 def main():
