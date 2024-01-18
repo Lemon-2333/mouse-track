@@ -18,26 +18,32 @@ class Colors:
 
 
 class Button(tk.Button):
-    def __init__(self, *args, **kwarges):
+    def __init__(self,x,y, *args, **kwarges):
         super(Button, self).__init__(*args, **kwarges)
-        self.pack(pady=10)
+        #self.pack(pady=10,side=tk.LEFT)
+        self.grid(column=x,row=y,columnspan=2)
         self["state"] = "normal"
 
     def switch(self):
         self["state"] = "disable" if self["state"] == "normal" else "normal"
 
-
 class Checkbutton(tk.Checkbutton):
-    def __init__(self, *args, **kwargs):
+    def __init__(self,x,y, *args, **kwargs):
         super(Checkbutton, self).__init__(*args, **kwargs)
-        self.pack(pady=2)
+        self.grid(column=x,row=y)
 
 class ImageLable(tk.Label):
-    def __init__(self,get_image:type(lambda : "a"), *args, **kwargs) -> None:
+    def __init__(self,x,y,get_image:type(lambda : "a"), *args, **kwargs) -> None:
         super(ImageLable, self).__init__(*args, **kwargs)
-        self.pack(pady=11)
+        self.grid(column=x,row=y,columnspan=4)
         self.state = 1
         self.get_image=get_image
+        self.width_rotio=1.0
+        self.height_rotio=0.875
+        self.width=int(self.width_rotio * self.winfo_width())
+        self.height=int(self.height_rotio * self.winfo_height())
+
+        
         print(self.get_image())
 
     
@@ -53,12 +59,25 @@ class ImageLable(tk.Label):
 
     def update_image(self):
         """更新图片显示"""
-        global image 
+        global image # 必须要设置全局，否则会垃圾回收
+        self.update_w_h()
         image=self.get_image()
-        self.config(image=image)
-        self.after(10,self.update_image)
+        image=ImageTk.PhotoImage(image=image.resize((self.width,self.height),Image.LANCZOS))
+        self.config(width=self.width,height=self.height,image=image)
+        self.after(16,self.update_image)
 
+    def update_w_h(self):
+        self.width=int(self.width_rotio * self.master.winfo_width())
+        self.height=int(self.height_rotio * self.master.winfo_height())
 
+    def resize( w_box, h_box, pil_image): #参数是：要适应的窗口宽、高、Image.open后的图片
+        w, h = pil_image.size #获取图像的原始大小   
+        f1 = 1.0*w_box/w 
+        f2 = 1.0*h_box/h    
+        factor = min([f1, f2])   
+        width = int(w*factor)    
+        height = int(h*factor)    
+        return pil_image.resize((width, height), Image.LANCZOS)  
 
 class ImageCache(object):
     def __init__(self, size: Size):
@@ -79,7 +98,7 @@ class ImageCache(object):
 
     def get_image(self):
         """返回当前缓存的图像"""
-        return ImageTk.PhotoImage(self.cache)
+        return self.cache
 
     def save(self, dirname="out", create_dir=True, clean=True):
         """
@@ -153,7 +172,7 @@ class ImageCache(object):
         self._cache.paste(Image.alpha_composite(self._cache, transp))
 
 class MoveTracker(tk.BooleanVar):
-    def __init__(self, cache: ImageCache, interval: float=0.0):
+    def __init__(self, cache: ImageCache, interval: float=0.016):
         """A tracker that maintains a state of whether it should track or not
         
         Args:
@@ -219,17 +238,15 @@ class App(tk.Tk):
         super(App, self).__init__()
 
         self.title("Mouse Tracker")
-        self.geometry("400x400")
+        self.geometry("550x400")
 
-        self.start_button = Button(self, text="开始记录", command=self.start_tracking)
-        self.stop_button = Button(self, text="停止记录", command=self.stop_tracking)
+        self.start_button = Button(master=self,x=0,y=0, text="开始记录", command=self.start_tracking)
+        self.stop_button = Button(master=self,x=2,y=0, text="停止记录", command=self.stop_tracking)
         self.stop_button.switch()
 
         self.cache = ImageCache(
             size=(self.winfo_screenwidth(), self.winfo_screenheight())
         )
-        #self.canvas = tk.Canvas(self,width=400, height=400)  # Label组件用于显示图片
-        self.image_lable = ImageLable(get_image=self.cache.get_image,master=self)
         self.trackers = Trackers(
             click_trackers={
                 mouse.Button.left: ClickTracker(cache=self.cache, color=Colors.Left),
@@ -242,12 +259,14 @@ class App(tk.Tk):
         )
 
         self.check_buttons = [
-            Checkbutton(self, text=text, variable=tracker)
-            for text, tracker in zip(
+            Checkbutton(master=self,x=x,y=1, text=text, variable=tracker)
+            for text, tracker,x in zip(
                 ["记录左键点击位置", "记录右键点击位置", "记录中键点击位置", "记录鼠标移动轨迹"],
                 [*self.trackers.click_trackers.values(), self.trackers.move_tracker],
+                range(4)
             )
         ]
+        self.image_lable = ImageLable(x=0,y=4,get_image=self.cache.get_image,master=self)
 
     def start_tracking(self):
         """点击开始记录"""
